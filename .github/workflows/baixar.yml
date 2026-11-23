@@ -1,0 +1,124 @@
+name: Baixar resultados Caixa (BH e Contagem)
+
+on:
+  workflow_dispatch:
+    inputs:
+      anos:
+        description: "Anos separados por vírgula"
+        default: "2022,2023,2024,2025,2026"
+      modalidades:
+        description: "Códigos das modalidades (ou all)"
+        default: "all"
+      cidades:
+        description: "Cidades separadas por vírgula"
+        default: "Belo Horizonte,Contagem"
+      workers:
+        description: "Downloads em paralelo por ano"
+        default: "4"
+  schedule:
+    - cron: "0 9 * * 1"   # toda segunda, 06:00 de Brasília (atualiza o ano corrente)
+
+permissions:
+  contents: write
+
+jobs:
+  preparar:
+    runs-on: ubuntu-latest
+    outputs:
+      anos: ${{ steps.m.outputs.anos }}
+    steps:
+      - id: m
+        run: |
+          ANOS="${{ github.event.inputs.anos }}"
+          [ -z "$ANOS" ] && ANOS="$(date +%Y)"   # execução agendada: só o ano corrente
+          echo "anos=$(echo "$ANOS" | tr -d ' ' | jq -R -c 'split(",")')" >> "$GITHUB_OUTPUT"
+
+  baixar:
+    needs: preparar
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    strategy:
+      fail-fast: false
+      matrix:
+        ano: ${{ fromJSON(needs.preparar.outputs.anos) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Testar acesso ao site da Caixa
+        run: |
+          code=$(curl -s -o /dev/null -m 60 -w "%{http_code}" "https://venda-imoveis.caixa.gov.br/sistema/resultado-licitacoes.asp?sltTipoBusca=resultados" || true)
+          echo "HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::A Caixa não respondeu (HTTP $code) para os servidores do GitHub. Provável bloqueio de IP estrangeiro; rode o script no seu computador."
+            exit 1
+          fi
+
+      # progresso (retomada se o job estourar o limite de 6h)
+      - uses: actions/cache@v4
+        with:
+          path: saida/${{ matrix.ano }}/_cache
+          key: cache-${{ matrix.ano }}-${{ github.run_id }}
+          restore-keys: cache-${{ matrix.ano }}-
+
+      - name: Baixar e filtrar
+        run: |
+          timeout -s INT 340m python caixa_resultados.py \
+            --anos "${{ matrix.ano }}" \
+            --modalidades "${{ github.event.inputs.modalidades || 'all' }}" \
+            --cidades "${{ github.event.inputs.cidades || 'Belo Horizonte,Contagem' }}" \
+            --workers "${{ github.event.inputs.workers || '4' }}" \
+            --saida "saida/${{ matrix.ano }}"
+          true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resultado-${{ matrix.ano }}
+          path: |
+            saida/${{ matrix.ano }}
+            !saida/${{ matrix.ano }}/_cache
+          if-no-files-found: ignore
+
+  consolidar:
+    needs: baixar
+    if: always() && needs.baixar.result != 'cancelled'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: resultado-*
+          path: parcial
+
+      - name: Montar pasta dados/
+        run: |
+          mkdir -p dados
+          # copia as pastas ANO/DATA/arquivo.html de cada parcial (sem apagar o que já existe)
+          for d in parcial/*/; do
+            for y in "$d"[0-9][0-9][0-9][0-9]; do
+              [ -d "$y" ] && cp -r "$y" dados/
+            done
+          done
+          # junta o índice novo com o existente no repositório
+          mkdir -p junta/antigo
+          [ -f dados/indice_BH_Contagem.csv ] && cp dados/indice_BH_Contagem.csv junta/antigo/ || true
+          cp -r parcial junta/novo
+          python consolidar.py junta dados
+
+      - name: Commitar resultados
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dados
+          git diff --cached --quiet && echo "Sem novidades." && exit 0
+          git commit -m "Atualiza resultados BH/Contagem ($(date +%F))"
+          git push
