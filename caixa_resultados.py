@@ -205,7 +205,9 @@ def processar(sess, base, lic, cache_dir: Path, bruto_dir, cidades, uf):
     chave = f"{lic['modalidade']}_{lic['licitacao']}_{slug(lic['comissao'])}"
     arq_cache = cache_dir / f"{chave}.json"
     if arq_cache.exists():
-        return json.loads(arq_cache.read_text(encoding="utf-8")), True
+        antigo = json.loads(arq_cache.read_text(encoding="utf-8"))
+        if antigo.get("total_imoveis_no_arquivo", 0) > 0:  # resultado vazio não conta como feito
+            return antigo, True
 
     def baixar():
         r = sess.get(
@@ -234,6 +236,7 @@ def processar(sess, base, lic, cache_dir: Path, bruto_dir, cidades, uf):
         "total_imoveis_no_arquivo": len(parse_resultado(doc)),
         "blocos": blocos,
         "vazio": len(doc.strip()) < 200 or "Não foram encontrad" in doc,
+        "diag": {"bytes": len(conteudo), "inicio": re.sub(r"\s+", " ", doc[:300])},
     }
     arq_cache.write_text(json.dumps(res, ensure_ascii=False), encoding="utf-8")
     return res, False
@@ -381,6 +384,7 @@ def main():
 
     # 2) baixa e filtra
     todos, falhas, feitos, achados = [], [], 0, 0
+    diag_n = [0]
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=a.workers) as ex:
         futs = {}
@@ -405,6 +409,10 @@ def main():
                         salvar_html(res, saida)
                     print(f"[{feitos}/{len(lics)}] {lic['data_ref'] or lic['ano_lista']} {lic['licitacao']} {lic['comissao']}: "
                           f"{len(res['blocos'])} imóvel(is) em {', '.join(sorted({b['cidade'] for b in res['blocos']}))}")
+                elif res["total_imoveis_no_arquivo"] == 0 and diag_n[0] < 5:
+                    diag_n[0] += 1
+                    d = res.get("diag", {})
+                    print(f"[DIAG] {lic['licitacao']} {lic['comissao']} -> {d.get('bytes')} bytes; início: {d.get('inicio')!r}")
                 elif feitos % 25 == 0:
                     dec = time.time() - t0
                     print(f"[{feitos}/{len(lics)}] ... {dec/60:.1f} min")

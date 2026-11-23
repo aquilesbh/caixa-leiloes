@@ -5,7 +5,7 @@ on:
     inputs:
       anos:
         description: "Anos separados por vírgula"
-        default: "2022,2023,2024,2025,2026"
+        default: "2025,2026"
       modalidades:
         description: "Códigos das modalidades (ou all)"
         default: "all"
