@@ -1,26 +1,25 @@
 # Resultados de leilões da Caixa — BH e Contagem
 
-Baixa **todos** os resultados de licitações/leilões de imóveis da Caixa (2022 em diante), filtra só
-**Belo Horizonte** e **Contagem** e organiza por ano e data.
+Baixa **todos** os resultados de licitações/leilões de imóveis da Caixa de uma vez, filtra só
+**Belo Horizonte** e **Contagem** e organiza por **ano e data** (CSV para Excel + HTML agrupado).
 
-## Via GitHub Actions (sem instalar nada)
-1. Aba **Actions** → *Baixar resultados Caixa (BH e Contagem)* → **Run workflow**.
-2. Espere (a 1ª rodada pode levar horas; cada ano roda em paralelo e retoma se estourar o limite de 6h — basta rodar de novo).
-3. Os resultados são commitados em `dados/`:
-   - `dados/2025/2025-03-14/<modalidade>_<licitação>_<comissão>.html`
-   - `dados/indice_BH_Contagem.xlsx` e `.csv` (uma linha por proposta)
+## Como usar (1 minuto, no seu Chrome)
+1. Abra <https://venda-imoveis.caixa.gov.br/sistema/resultado-licitacoes.asp?sltTipoBusca=resultados>
+2. `F12` → aba **Console** (se pedir, digite `permitir colagem` + Enter).
+3. Cole todo o conteúdo de [`caixa_navegador.js`](caixa_navegador.js) e aperte Enter.
+4. Deixe a aba aberta até aparecer **PRONTO** (pode levar de 30 min a 1 h; o servidor da Caixa é lento).
+   Baixa `resultados_BH_Contagem.csv` e `resultados_BH_Contagem.html`.
 
-Roda sozinho toda segunda-feira para atualizar o ano corrente.
+Se fechar a aba, é só colar de novo: ele continua de onde parou (guarda o progresso no navegador).
+Para mudar anos/cidades, edite o bloco `CFG` no início do arquivo.
 
-> Se o passo "Testar acesso ao site da Caixa" falhar, o site está bloqueando os IPs do GitHub; use o modo local abaixo.
+## Por que no navegador e não via GitHub Actions / Python?
+A Caixa protege o download dos resultados com um CAPTCHA anti-robô (Radware). Pedidos vindos de
+servidores (GitHub Actions) recebem o CAPTCHA em vez do arquivo, e o índice sai vazio. Dentro do Chrome
+normal o site funciona. A lista de licitações, por outro lado, não é bloqueada.
 
-## No seu computador
-```
-pip install -r requirements.txt
-python caixa_resultados.py            # tudo
-python caixa_resultados.py --anos 2025 --modalidades 14,4,5
-```
-Opções: `--cidades`, `--workers`, `--salvar-bruto`, `--sem-verificar-ssl`. Pode interromper (Ctrl+C) e rodar de novo.
+`caixa_resultados.py` (versão em Python) fica no repositório para quem rodar de uma rede/IP que a Caixa
+não bloqueie; se aparecer `Radware Bot Manager CAPTCHA` nas linhas `[DIAG]`, use o script do navegador.
 
 Modalidades: 1 Leilão · 14 Leilão SFI Edital Único · 2 Concorrência · 3 Venda Direta · 4/5 1º/2º Leilão SFI ·
 21/22 Licitação Aberta/Fechada · 33 Venda Online · 34 Venda Direta Online.
