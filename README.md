@@ -23,3 +23,9 @@ não bloqueie; se aparecer `Radware Bot Manager CAPTCHA` nas linhas `[DIAG]`, us
 
 Modalidades: 1 Leilão · 14 Leilão SFI Edital Único · 2 Concorrência · 3 Venda Direta · 4/5 1º/2º Leilão SFI ·
 21/22 Licitação Aberta/Fechada · 33 Venda Online · 34 Venda Direta Online.
+
+## Atualização incremental
+
+`caixa_atualizar.js` baixa só as licitações que ainda não foram verificadas (lista em `window.CAIXA_JA`,
+vinda da aba "Controle" da planilha) e devolve em `window.CAIXA_NOVO` as linhas novas de "Arremates" e "Controle".
+Licitações recentes (últimos ~21 dias) ou com imóveis sem arremate devem ser removidas de `CAIXA_JA` para serem reverificadas.
